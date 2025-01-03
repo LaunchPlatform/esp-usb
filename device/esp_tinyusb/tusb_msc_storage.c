@@ -26,6 +26,7 @@ static const char *TAG = "tinyusb_msc_storage";
 
 typedef struct {
     bool is_fat_mounted;
+    bool keep_vfs_fat_mount;
     const char *base_path;
     union {
         wl_handle_t wl_handle;
@@ -186,7 +187,7 @@ static esp_err_t msc_storage_write_sector(uint32_t lba,
         const void *src)
 {
     assert(s_storage_handle);
-    if (s_storage_handle->is_fat_mounted) {
+    if (!s_storage_handle->keep_vfs_fat_mount && s_storage_handle->is_fat_mounted) {
         ESP_LOGE(TAG, "can't write, FAT mounted");
         return ESP_ERR_INVALID_STATE;
     }
@@ -385,6 +386,7 @@ esp_err_t tinyusb_msc_storage_init_spiflash(const tinyusb_msc_spiflash_config_t 
     s_storage_handle->read = &_read_sector_spiflash;
     s_storage_handle->write = &_write_sector_spiflash;
     s_storage_handle->is_fat_mounted = false;
+    s_storage_handle->keep_vfs_fat_mount = config->keep_vfs_fat_mount;
     s_storage_handle->base_path = NULL;
     s_storage_handle->wl_handle = config->wl_handle;
     // In case the user does not set mount_config.max_files
@@ -522,11 +524,11 @@ bool tud_msc_test_unit_ready_cb(uint8_t lun)
     (void) lun;
     bool result = false;
 
-    if (s_storage_handle->is_fat_mounted) {
+    if (!s_storage_handle->keep_vfs_fat_mount && s_storage_handle->is_fat_mounted) {
         tud_msc_set_sense(lun, SCSI_SENSE_NOT_READY, SCSI_CODE_ASC_MEDIUM_NOT_PRESENT, SCSI_CODE_ASCQ);
         result = false;
     } else {
-        if (tinyusb_msc_storage_unmount() != ESP_OK) {
+        if (!s_storage_handle->keep_vfs_fat_mount && tinyusb_msc_storage_unmount() != ESP_OK) {
             ESP_LOGW(TAG, "tud_msc_test_unit_ready_cb() unmount Fails");
         }
         result = true;
@@ -627,6 +629,9 @@ int32_t tud_msc_scsi_cb(uint8_t lun, uint8_t const scsi_cmd[16], void *buffer, u
 // Invoked when device is unmounted
 void tud_umount_cb(void)
 {
+    if (s_storage_handle->keep_vfs_fat_mount) {
+        return;
+    }
     if (tinyusb_msc_storage_mount(s_storage_handle->base_path) != ESP_OK) {
         ESP_LOGW(TAG, "tud_umount_cb() mount Fails");
     }
@@ -635,6 +640,9 @@ void tud_umount_cb(void)
 // Invoked when device is mounted (configured)
 void tud_mount_cb(void)
 {
+    if (s_storage_handle->keep_vfs_fat_mount) {
+        return;
+    }
     tinyusb_msc_storage_unmount();
 }
 /*********************************************************************** TinyUSB MSC callbacks*/
