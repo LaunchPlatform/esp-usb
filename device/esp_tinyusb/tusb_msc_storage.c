@@ -8,7 +8,6 @@
 #include "esp_log.h"
 #include "esp_err.h"
 #include "esp_check.h"
-#include "esp_vfs_fat.h"
 #include "diskio_impl.h"
 #include "diskio_wl.h"
 #include "wear_levelling.h"
@@ -17,7 +16,6 @@
 #include "tinyusb.h"
 #include "class/msc/msc_device.h"
 #include "tusb_msc_storage.h"
-#include "esp_vfs_fat.h"
 #if SOC_SDMMC_HOST_SUPPORTED
 #include "diskio_sdmmc.h"
 #endif
@@ -31,8 +29,6 @@ typedef struct {
         sdmmc_card_t *card;
 #endif
     };
-    esp_err_t (*mount)(BYTE pdrv);
-    esp_err_t (*unmount)(void);
     uint32_t (*sector_count)(void);
     uint32_t (*sector_size)(void);
     esp_err_t (*read)(size_t sector_size, uint32_t lba, uint32_t offset, size_t size, void *dest);
@@ -44,28 +40,6 @@ typedef struct {
 
 /* handle of tinyusb driver connected to application */
 static tinyusb_msc_storage_handle_s *s_storage_handle;
-
-static esp_err_t _mount_spiflash(BYTE pdrv)
-{
-    return ff_diskio_register_wl_partition(pdrv, s_storage_handle->wl_handle);
-}
-
-static esp_err_t _unmount_spiflash(void)
-{
-    BYTE pdrv;
-    pdrv = ff_diskio_get_pdrv_wl(s_storage_handle->wl_handle);
-    if (pdrv == 0xff) {
-        ESP_LOGE(TAG, "Invalid state");
-        return ESP_ERR_INVALID_STATE;
-    }
-    ff_diskio_clear_pdrv_wl(s_storage_handle->wl_handle);
-
-    char drv[3] = {(char)('0' + pdrv), ':', 0};
-    f_mount(0, drv, 0);
-    ff_diskio_unregister(pdrv);
-
-    return ESP_OK;
-}
 
 static uint32_t _get_sector_count_spiflash(void)
 {
@@ -113,28 +87,6 @@ static esp_err_t _write_sector_spiflash(size_t sector_size,
 }
 
 #if SOC_SDMMC_HOST_SUPPORTED
-static esp_err_t _mount_sdmmc(BYTE pdrv)
-{
-    ff_diskio_register_sdmmc(pdrv, s_storage_handle->card);
-    ff_sdmmc_set_disk_status_check(pdrv, false);
-    return ESP_OK;
-}
-
-static esp_err_t _unmount_sdmmc(void)
-{
-    BYTE pdrv;
-    pdrv = ff_diskio_get_pdrv_card(s_storage_handle->card);
-    if (pdrv == 0xff) {
-        ESP_LOGE(TAG, "Invalid state");
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    char drv[3] = {(char)('0' + pdrv), ':', 0};
-    f_mount(0, drv, 0);
-    ff_diskio_unregister(pdrv);
-
-    return ESP_OK;
-}
 
 static uint32_t _get_sector_count_sdmmc(void)
 {
@@ -197,52 +149,6 @@ static esp_err_t msc_storage_write_sector(uint32_t lba,
     return (s_storage_handle->write)(sector_size, addr, lba, offset, size, src);
 }
 
-static esp_err_t _mount(char *drv, FATFS *fs)
-{
-    void *workbuf = NULL;
-    const size_t workbuf_size = 4096;
-    esp_err_t ret;
-    // Try to mount partition
-    FRESULT fresult = f_mount(fs, drv, 1);
-    if (fresult != FR_OK) {
-        ESP_LOGW(TAG, "f_mount failed (%d)", fresult);
-        if (!((fresult == FR_NO_FILESYSTEM || fresult == FR_INT_ERR))) {
-            ret = ESP_FAIL;
-            goto fail;
-        }
-        workbuf = ff_memalloc(workbuf_size);
-        if (workbuf == NULL) {
-            ret = ESP_ERR_NO_MEM;
-            goto fail;
-        }
-        size_t alloc_unit_size = esp_vfs_fat_get_allocation_unit_size(
-                                     CONFIG_WL_SECTOR_SIZE,
-                                     4096);
-        ESP_LOGW(TAG, "formatting card, allocation unit size=%d", alloc_unit_size);
-        const MKFS_PARM opt = {(BYTE)FM_FAT, 0, 0, 0, alloc_unit_size};
-        fresult = f_mkfs("", &opt, workbuf, workbuf_size); // Use default volume
-        if (fresult != FR_OK) {
-            ret = ESP_FAIL;
-            ESP_LOGE(TAG, "f_mkfs failed (%d)", fresult);
-            goto fail;
-        }
-        free(workbuf);
-        workbuf = NULL;
-        fresult = f_mount(fs, drv, 0);
-        if (fresult != FR_OK) {
-            ret = ESP_FAIL;
-            ESP_LOGE(TAG, "f_mount failed after formatting (%d)", fresult);
-            goto fail;
-        }
-    }
-    return ESP_OK;
-fail:
-    if (workbuf) {
-        free(workbuf);
-    }
-    return ret;
-}
-
 uint32_t tinyusb_msc_storage_get_sector_count(void)
 {
     assert(s_storage_handle);
@@ -260,8 +166,6 @@ esp_err_t tinyusb_msc_storage_init_spiflash(const tinyusb_msc_spiflash_config_t 
     assert(!s_storage_handle);
     s_storage_handle = (tinyusb_msc_storage_handle_s *)malloc(sizeof(tinyusb_msc_storage_handle_s));
     ESP_RETURN_ON_FALSE(s_storage_handle, ESP_ERR_NO_MEM, TAG, "could not allocate new handle for storage");
-    s_storage_handle->mount = &_mount_spiflash;
-    s_storage_handle->unmount = &_unmount_spiflash;
     s_storage_handle->sector_count = &_get_sector_count_spiflash;
     s_storage_handle->sector_size = &_get_sector_size_spiflash;
     s_storage_handle->read = &_read_sector_spiflash;
@@ -294,8 +198,6 @@ esp_err_t tinyusb_msc_storage_init_sdmmc(const tinyusb_msc_sdmmc_config_t *confi
     assert(!s_storage_handle);
     s_storage_handle = (tinyusb_msc_storage_handle_s *)malloc(sizeof(tinyusb_msc_storage_handle_s));
     ESP_RETURN_ON_FALSE(s_storage_handle, ESP_ERR_NO_MEM, TAG, "could not allocate new handle for storage");
-    s_storage_handle->mount = &_mount_sdmmc;
-    s_storage_handle->unmount = &_unmount_sdmmc;
     s_storage_handle->sector_count = &_get_sector_count_sdmmc;
     s_storage_handle->sector_size = &_get_sector_size_sdmmc;
     s_storage_handle->read = &_read_sector_sdmmc;
