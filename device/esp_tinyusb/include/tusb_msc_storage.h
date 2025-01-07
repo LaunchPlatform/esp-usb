@@ -74,7 +74,6 @@ typedef struct {
     tusb_msc_callback_t callback_mount_changed;     /*!< Pointer to the function callback that will be delivered AFTER mount/unmount operation is successfully finished */
     tusb_msc_callback_t callback_premount_changed;  /*!< Pointer to the function callback that will be delivered BEFORE mount/unmount operation is started */
     const esp_vfs_fat_mount_config_t mount_config; /*!< FATFS mount config */
-    bool keep_vfs_fat_mount; /*!< Keep vfs fat mounted even when the USB device is mounted */
 } tinyusb_msc_spiflash_config_t;
 
 /**

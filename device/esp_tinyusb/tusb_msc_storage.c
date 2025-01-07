@@ -25,9 +25,6 @@
 static const char *TAG = "tinyusb_msc_storage";
 
 typedef struct {
-    bool is_fat_mounted;
-    bool keep_vfs_fat_mount;
-    const char *base_path;
     union {
         wl_handle_t wl_handle;
 #if SOC_SDMMC_HOST_SUPPORTED
@@ -187,10 +184,6 @@ static esp_err_t msc_storage_write_sector(uint32_t lba,
         const void *src)
 {
     assert(s_storage_handle);
-    if (!s_storage_handle->keep_vfs_fat_mount && s_storage_handle->is_fat_mounted) {
-        ESP_LOGE(TAG, "can't write, FAT mounted");
-        return ESP_ERR_INVALID_STATE;
-    }
     size_t sector_size = tinyusb_msc_storage_get_sector_size();
     size_t temp = 0;
     size_t addr = 0; // Address of the data to be read, relative to the beginning of the partition.
@@ -250,118 +243,6 @@ fail:
     return ret;
 }
 
-esp_err_t tinyusb_msc_storage_mount(const char *base_path)
-{
-    esp_err_t ret = ESP_OK;
-    assert(s_storage_handle);
-
-    if (s_storage_handle->is_fat_mounted) {
-        return ESP_OK;
-    }
-
-    tusb_msc_callback_t cb = s_storage_handle->callback_premount_changed;
-    if (cb) {
-        tinyusb_msc_event_t event = {
-            .type = TINYUSB_MSC_EVENT_PREMOUNT_CHANGED,
-            .mount_changed_data = {
-                .is_mounted = s_storage_handle->is_fat_mounted
-            }
-        };
-        cb(&event);
-    }
-
-    if (!base_path) {
-        base_path = CONFIG_TINYUSB_MSC_MOUNT_PATH;
-    }
-
-    // connect driver to FATFS
-    BYTE pdrv = 0xFF;
-    ESP_RETURN_ON_ERROR(ff_diskio_get_drive(&pdrv), TAG,
-                        "The maximum count of volumes is already mounted");
-    char drv[3] = {(char)('0' + pdrv), ':', 0};
-
-    ESP_GOTO_ON_ERROR((s_storage_handle->mount)(pdrv), fail, TAG, "Failed pdrv=%d", pdrv);
-
-    FATFS *fs = NULL;
-    ret = esp_vfs_fat_register(base_path, drv, s_storage_handle->max_files, &fs);
-    if (ret == ESP_ERR_INVALID_STATE) {
-        ESP_LOGD(TAG, "it's okay, already registered with VFS");
-    } else if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "esp_vfs_fat_register failed (0x%x)", ret);
-        goto fail;
-    }
-
-    ESP_GOTO_ON_ERROR(_mount(drv, fs), fail, TAG, "Failed _mount");
-
-    s_storage_handle->is_fat_mounted = true;
-    s_storage_handle->base_path = base_path;
-
-    cb = s_storage_handle->callback_mount_changed;
-    if (cb) {
-        tinyusb_msc_event_t event = {
-            .type = TINYUSB_MSC_EVENT_MOUNT_CHANGED,
-            .mount_changed_data = {
-                .is_mounted = s_storage_handle->is_fat_mounted
-            }
-        };
-        cb(&event);
-    }
-
-    return ret;
-
-fail:
-    if (fs) {
-        esp_vfs_fat_unregister_path(base_path);
-    }
-    ff_diskio_unregister(pdrv);
-    s_storage_handle->is_fat_mounted = false;
-    ESP_LOGW(TAG, "Failed to mount storage (0x%x)", ret);
-    return ret;
-}
-
-esp_err_t tinyusb_msc_storage_unmount(void)
-{
-    if (!s_storage_handle) {
-        return ESP_FAIL;
-    }
-
-    if (!s_storage_handle->is_fat_mounted) {
-        return ESP_OK;
-    }
-
-    tusb_msc_callback_t cb = s_storage_handle->callback_premount_changed;
-    if (cb) {
-        tinyusb_msc_event_t event = {
-            .type = TINYUSB_MSC_EVENT_PREMOUNT_CHANGED,
-            .mount_changed_data = {
-                .is_mounted = s_storage_handle->is_fat_mounted
-            }
-        };
-        cb(&event);
-    }
-
-    esp_err_t err = (s_storage_handle->unmount)();
-    if (err) {
-        return err;
-    }
-    err = esp_vfs_fat_unregister_path(s_storage_handle->base_path);
-    s_storage_handle->base_path = NULL;
-    s_storage_handle->is_fat_mounted = false;
-
-    cb = s_storage_handle->callback_mount_changed;
-    if (cb) {
-        tinyusb_msc_event_t event = {
-            .type = TINYUSB_MSC_EVENT_MOUNT_CHANGED,
-            .mount_changed_data = {
-                .is_mounted = s_storage_handle->is_fat_mounted
-            }
-        };
-        cb(&event);
-    }
-
-    return err;
-}
-
 uint32_t tinyusb_msc_storage_get_sector_count(void)
 {
     assert(s_storage_handle);
@@ -385,9 +266,6 @@ esp_err_t tinyusb_msc_storage_init_spiflash(const tinyusb_msc_spiflash_config_t 
     s_storage_handle->sector_size = &_get_sector_size_spiflash;
     s_storage_handle->read = &_read_sector_spiflash;
     s_storage_handle->write = &_write_sector_spiflash;
-    s_storage_handle->is_fat_mounted = false;
-    s_storage_handle->keep_vfs_fat_mount = config->keep_vfs_fat_mount;
-    s_storage_handle->base_path = NULL;
     s_storage_handle->wl_handle = config->wl_handle;
     // In case the user does not set mount_config.max_files
     // and for backward compatibility with versions <1.4.2
@@ -422,8 +300,6 @@ esp_err_t tinyusb_msc_storage_init_sdmmc(const tinyusb_msc_sdmmc_config_t *confi
     s_storage_handle->sector_size = &_get_sector_size_sdmmc;
     s_storage_handle->read = &_read_sector_sdmmc;
     s_storage_handle->write = &_write_sector_sdmmc;
-    s_storage_handle->is_fat_mounted = false;
-    s_storage_handle->base_path = NULL;
     s_storage_handle->card = config->card;
     // In case the user does not set mount_config.max_files
     // and for backward compatibility with versions <1.4.2
@@ -487,12 +363,6 @@ esp_err_t tinyusb_msc_unregister_callback(tinyusb_msc_event_type_t event_type)
     }
 }
 
-bool tinyusb_msc_storage_in_use_by_usb_host(void)
-{
-    assert(s_storage_handle);
-    return !s_storage_handle->is_fat_mounted;
-}
-
 
 /* TinyUSB MSC callbacks
    ********************************************************************* */
@@ -522,18 +392,7 @@ void tud_msc_inquiry_cb(uint8_t lun, uint8_t vendor_id[8], uint8_t product_id[16
 bool tud_msc_test_unit_ready_cb(uint8_t lun)
 {
     (void) lun;
-    bool result = false;
-
-    if (!s_storage_handle->keep_vfs_fat_mount && s_storage_handle->is_fat_mounted) {
-        tud_msc_set_sense(lun, SCSI_SENSE_NOT_READY, SCSI_CODE_ASC_MEDIUM_NOT_PRESENT, SCSI_CODE_ASCQ);
-        result = false;
-    } else {
-        if (!s_storage_handle->keep_vfs_fat_mount && tinyusb_msc_storage_unmount() != ESP_OK) {
-            ESP_LOGW(TAG, "tud_msc_test_unit_ready_cb() unmount Fails");
-        }
-        result = true;
-    }
-    return result;
+    return true;
 }
 
 // Invoked when received SCSI_CMD_READ_CAPACITY_10 and SCSI_CMD_READ_FORMAT_CAPACITY to determine the disk size
@@ -555,12 +414,6 @@ bool tud_msc_start_stop_cb(uint8_t lun, uint8_t power_condition, bool start, boo
 {
     (void) lun;
     (void) power_condition;
-
-    if (load_eject && !start) {
-        if (tinyusb_msc_storage_mount(s_storage_handle->base_path) != ESP_OK) {
-            ESP_LOGW(TAG, "tud_msc_start_stop_cb() mount Fails");
-        }
-    }
     return true;
 }
 
@@ -629,20 +482,12 @@ int32_t tud_msc_scsi_cb(uint8_t lun, uint8_t const scsi_cmd[16], void *buffer, u
 // Invoked when device is unmounted
 void tud_umount_cb(void)
 {
-    if (s_storage_handle->keep_vfs_fat_mount) {
-        return;
-    }
-    if (tinyusb_msc_storage_mount(s_storage_handle->base_path) != ESP_OK) {
-        ESP_LOGW(TAG, "tud_umount_cb() mount Fails");
-    }
+    // TODO: provide a callback for the user to learn about this event
 }
 
 // Invoked when device is mounted (configured)
 void tud_mount_cb(void)
 {
-    if (s_storage_handle->keep_vfs_fat_mount) {
-        return;
-    }
-    tinyusb_msc_storage_unmount();
+    // TODO: provide a callback for the user to learn about this event
 }
 /*********************************************************************** TinyUSB MSC callbacks*/
