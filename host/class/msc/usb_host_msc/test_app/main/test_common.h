@@ -12,9 +12,9 @@ enum {
 };
 
 void device_app(void);
-#if SOC_SDMMC_HOST_SUPPORTED
+#if CONFIG_TINYUSB_MSC_SOC_SDMMC_HOST_ENABLED
 void device_app_sdmmc(void);
-#endif /* SOC_SDMMC_HOST_SUPPORTED */
+#endif /* CONFIG_TINYUSB_MSC_SOC_SDMMC_HOST_ENABLED */
 
 #define README_CONTENTS \
 "This is tinyusb's MassStorage Class demo.\r\n\r\n\

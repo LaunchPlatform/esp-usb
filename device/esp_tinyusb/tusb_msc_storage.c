@@ -16,7 +16,7 @@
 #include "tinyusb.h"
 #include "class/msc/msc_device.h"
 #include "tusb_msc_storage.h"
-#if SOC_SDMMC_HOST_SUPPORTED
+#if CONFIG_TINYUSB_MSC_SOC_SDMMC_HOST_ENABLED
 #include "diskio_sdmmc.h"
 #endif
 
@@ -25,7 +25,7 @@ static const char *TAG = "tinyusb_msc_storage";
 typedef struct {
     union {
         wl_handle_t wl_handle;
-#if SOC_SDMMC_HOST_SUPPORTED
+#if CONFIG_TINYUSB_MSC_SOC_SDMMC_HOST_ENABLED
         sdmmc_card_t *card;
 #endif
     };
@@ -86,7 +86,7 @@ static esp_err_t _write_sector_spiflash(size_t sector_size,
     return wl_write(s_storage_handle->wl_handle, addr, src, size);
 }
 
-#if SOC_SDMMC_HOST_SUPPORTED
+#if CONFIG_TINYUSB_MSC_SOC_SDMMC_HOST_ENABLED
 
 static uint32_t _get_sector_count_sdmmc(void)
 {
@@ -192,7 +192,7 @@ esp_err_t tinyusb_msc_storage_init_spiflash(const tinyusb_msc_spiflash_config_t 
     return ESP_OK;
 }
 
-#if SOC_SDMMC_HOST_SUPPORTED
+#if CONFIG_TINYUSB_MSC_SOC_SDMMC_HOST_ENABLED
 esp_err_t tinyusb_msc_storage_init_sdmmc(const tinyusb_msc_sdmmc_config_t *config)
 {
     assert(!s_storage_handle);

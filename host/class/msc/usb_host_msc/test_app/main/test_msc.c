@@ -564,11 +564,11 @@ TEST_CASE("mock_device_app", "[usb_msc_device][ignore]")
     device_app();
 }
 
-#if SOC_SDMMC_HOST_SUPPORTED
+#if CONFIG_TINYUSB_MSC_SOC_SDMMC_HOST_ENABLED
 TEST_CASE("mock_device_app", "[usb_msc_device_sdmmc][ignore]")
 {
     device_app_sdmmc();
 }
-#endif /* SOC_SDMMC_HOST_SUPPORTED */
+#endif /* CONFIG_TINYUSB_MSC_SOC_SDMMC_HOST_ENABLED */
 
 #endif /* SOC_USB_OTG_SUPPORTED */

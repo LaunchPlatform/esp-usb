@@ -173,12 +173,12 @@ menu "TinyUSB Stack"
             help
                 MSC FIFO size, in bytes.
 
-        config TINYUSB_MSC_MOUNT_PATH
+        config TINYUSB_MSC_SOC_SDMMC_HOST_ENABLED
             depends on TINYUSB_MSC_ENABLED
-            string "Mount Path"
-            default "/data"
+            string "Enable SOC SDMMC host or not"
+            default y
             help
-                MSC Mount Path of storage.
+                MSC SD support enabled or not.
     endmenu # "Massive Storage Class"
 
     menu "Communication Device Class (CDC)"

@@ -14,7 +14,7 @@ extern "C" {
 #include "esp_err.h"
 #include "wear_levelling.h"
 #include "esp_vfs_fat.h"
-#if SOC_SDMMC_HOST_SUPPORTED
+#if CONFIG_TINYUSB_MSC_SOC_SDMMC_HOST_ENABLED
 #include "driver/sdmmc_host.h"
 #endif
 
@@ -48,7 +48,7 @@ typedef struct {
  */
 typedef void(*tusb_msc_callback_t)(tinyusb_msc_event_t *event);
 
-#if SOC_SDMMC_HOST_SUPPORTED
+#if CONFIG_TINYUSB_MSC_SOC_SDMMC_HOST_ENABLED
 /**
  * @brief Configuration structure for sdmmc initialization
  *
@@ -86,7 +86,7 @@ typedef struct {
  */
 esp_err_t tinyusb_msc_storage_init_spiflash(const tinyusb_msc_spiflash_config_t *config);
 
-#if SOC_SDMMC_HOST_SUPPORTED
+#if CONFIG_TINYUSB_MSC_SOC_SDMMC_HOST_ENABLED
 /**
  * @brief Register storage type sd-card with tinyusb driver
  *

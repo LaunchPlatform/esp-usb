@@ -12,15 +12,15 @@
 #include "esp_check.h"
 #include "driver/gpio.h"
 #include "tusb_msc_storage.h"
-#if SOC_SDMMC_HOST_SUPPORTED
+#if CONFIG_TINYUSB_MSC_SOC_SDMMC_HOST_ENABLED
 #include "diskio_impl.h"
 #include "diskio_sdmmc.h"
-#endif /* SOC_SDMMC_HOST_SUPPORTED */
+#endif /* CONFIG_TINYUSB_MSC_SOC_SDMMC_HOST_ENABLED */
 
 #if SOC_USB_OTG_SUPPORTED
 
 /* sd-card configuration to be done by user */
-#if SOC_SDMMC_HOST_SUPPORTED
+#if CONFIG_TINYUSB_MSC_SOC_SDMMC_HOST_ENABLED
 #define SDMMC_BUS_WIDTH 4 /* Select the bus width of SD or MMC interface (4 or 1).
                             Note that even if 1 line mode is used, D3 pin of the SD card must
                             have a pull-up resistor connected. Otherwise the card may enter
@@ -31,7 +31,7 @@
 #define PIN_D1          38 /* D1 GPIO number (applicable when width SDMMC_BUS_WIDTH is 4) */
 #define PIN_D2          33 /* D2 GPIO number (applicable when width SDMMC_BUS_WIDTH is 4) */
 #define PIN_D3          34 /* D3 GPIO number (applicable when width SDMMC_BUS_WIDTH is 4) */
-#endif /* SOC_SDMMC_HOST_SUPPORTED */
+#endif /* CONFIG_TINYUSB_MSC_SOC_SDMMC_HOST_ENABLED */
 
 static const char *TAG = "msc_example";
 
@@ -173,7 +173,7 @@ void device_app(void)
     }
 }
 
-#if SOC_SDMMC_HOST_SUPPORTED
+#if CONFIG_TINYUSB_MSC_SOC_SDMMC_HOST_ENABLED
 static esp_err_t storage_init_sdmmc(sdmmc_card_t **card)
 {
     esp_err_t ret = ESP_OK;
@@ -262,6 +262,6 @@ void device_app_sdmmc(void)
         vTaskDelay(100);
     }
 }
-#endif /* SOC_SDMMC_HOST_SUPPORTED */
+#endif /* CONFIG_TINYUSB_MSC_SOC_SDMMC_HOST_ENABLED */
 
 #endif /* SOC_USB_OTG_SUPPORTED */
