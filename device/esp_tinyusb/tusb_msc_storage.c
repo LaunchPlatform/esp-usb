@@ -26,7 +26,7 @@ typedef struct {
     union {
         wl_handle_t wl_handle;
 #if CONFIG_TINYUSB_MSC_SOC_SDMMC_HOST_ENABLED
-        sdmmc_card_t *card;
+        const sdmmc_card_t *card;
 #endif
     };
     uint32_t (*sector_count)(void);
