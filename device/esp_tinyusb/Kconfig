@@ -154,6 +154,12 @@ menu "TinyUSB Stack"
             default "Espressif MSC Device"
             help
                 Name of the MSC device.
+
+        config TINYUSB_HIGH_SPEED_ENABLED
+            bool "Enable high speed USB or not"
+            default y
+            help
+                Enable high speed usb or not.
     endmenu # "Descriptor configuration"
 
     menu "Massive Storage Class (MSC)"
